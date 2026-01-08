@@ -218,11 +218,59 @@ def build_engine_from_onnx(
     if config.verbose:
         print(f"[TensorRT] 開始構建 engine，來源: {onnx_path}")
     
+    # 檢查 TensorRT 版本
+    try:
+        trt_version = trt.__version__
+        if config.verbose:
+            print(f"[TensorRT] TensorRT 版本: {trt_version}")
+    except:
+        pass
+    
     # 創建 builder 和 network
-    builder = trt.Builder(TRT_LOGGER)
-    network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
-    parser = trt.OnnxParser(network, TRT_LOGGER)
-    builder_config = builder.create_builder_config()
+    try:
+        builder = trt.Builder(TRT_LOGGER)
+        if builder is None:
+            print("[錯誤] 無法創建 TensorRT Builder。請檢查 TensorRT 和 CUDA 安裝。")
+            return None
+    except Exception as e:
+        print(f"[錯誤] 創建 TensorRT Builder 失敗: {e}")
+        print("[提示] 請確保已正確安裝 TensorRT 和 CUDA，並且 GPU 可用。")
+        return None
+    
+    try:
+        network_flags = 1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
+        network = builder.create_network(network_flags)
+        if network is None:
+            print("[錯誤] 無法創建 TensorRT Network")
+            return None
+    except Exception as e:
+        print(f"[錯誤] 創建 TensorRT Network 失敗: {e}")
+        return None
+    
+    try:
+        parser = trt.OnnxParser(network, TRT_LOGGER)
+        if parser is None:
+            print("[錯誤] 無法創建 ONNX Parser")
+            return None
+    except Exception as e:
+        print(f"[錯誤] 創建 ONNX Parser 失敗: {e}")
+        return None
+    
+    try:
+        builder_config = builder.create_builder_config()
+        if builder_config is None:
+            print("[錯誤] 無法創建 TensorRT Builder Config。這可能是由於 GPU/CUDA 問題或 TensorRT 版本不兼容。")
+            print("[提示] 請檢查：")
+            print("  1. GPU 是否可用且驅動程序已正確安裝")
+            print("  2. CUDA 是否正確安裝並與 TensorRT 版本兼容")
+            print("  3. TensorRT 版本是否與您的系統兼容")
+            return None
+    except Exception as e:
+        print(f"[錯誤] 創建 TensorRT Builder Config 失敗: {e}")
+        print("[提示] 這通常是因為 TensorRT 初始化失敗。請檢查 GPU/CUDA 環境。")
+        import traceback
+        traceback.print_exc()
+        return None
     
     # 設置進度監控器
     if progress_callback:
@@ -276,7 +324,14 @@ def build_engine_from_onnx(
                 print(f"[TensorRT] 檢測到模型實際輸入尺寸: {model_h}x{model_w}")
     
     # 設置優化配置文件
-    profile = builder.create_optimization_profile()
+    try:
+        profile = builder.create_optimization_profile()
+        if profile is None:
+            print("[錯誤] 無法創建優化配置文件")
+            return None
+    except Exception as e:
+        print(f"[錯誤] 創建優化配置文件失敗: {e}")
+        return None
     
     if is_static:
         # 靜態輸入 - 優先使用模型的實際尺寸
@@ -352,12 +407,36 @@ def build_engine_from_onnx(
     
     # 構建 engine
     try:
-        plan = builder.build_serialized_network(network, builder_config)
+        # 嘗試使用 build_serialized_network (TensorRT 8.0+)
+        plan = None
+        try:
+            plan = builder.build_serialized_network(network, builder_config)
+        except AttributeError:
+            # 如果不支持 build_serialized_network，使用舊方法
+            if config.verbose:
+                print("[TensorRT] 使用舊版 API 構建 engine...")
+            engine = builder.build_engine(network, builder_config)
+            if engine is None:
+                print("[錯誤] 無法構建 engine")
+                return None
+            if config.verbose:
+                print("[TensorRT] Engine 構建完成")
+            return engine
+        
         if plan is None:
-            print("[錯誤] 無法構建 engine")
+            print("[錯誤] 無法構建 engine (build_serialized_network 返回 None)")
+            print("[提示] 這可能是由於：")
+            print("  1. 模型不兼容或損壞")
+            print("  2. 輸入尺寸配置錯誤")
+            print("  3. GPU 記憶體不足")
+            print("  4. TensorRT 版本問題")
             return None
         
         runtime = trt.Runtime(TRT_LOGGER)
+        if runtime is None:
+            print("[錯誤] 無法創建 TensorRT Runtime")
+            return None
+        
         engine = runtime.deserialize_cuda_engine(plan)
         
         if engine is None:
@@ -369,6 +448,24 @@ def build_engine_from_onnx(
         
         return engine
     
+    except RuntimeError as e:
+        error_msg = str(e)
+        if "pybind11::init(): factory function returned nullptr" in error_msg:
+            print("[錯誤] TensorRT 初始化失敗：factory function returned nullptr")
+            print("[可能的原因]：")
+            print("  1. TensorRT 與 CUDA 版本不兼容")
+            print("  2. GPU 驅動程序過舊或未正確安裝")
+            print("  3. TensorRT 庫文件損壞或缺失")
+            print("  4. GPU 不可用或記憶體不足")
+            print("[建議]：")
+            print("  - 檢查 TensorRT 和 CUDA 版本兼容性")
+            print("  - 確認 GPU 驅動程序已正確安裝")
+            print("  - 嘗試重啟應用或檢查 GPU 狀態")
+        else:
+            print(f"[錯誤] 構建 engine 時發生 RuntimeError: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
     except Exception as e:
         print(f"[錯誤] 構建 engine 時發生異常: {e}")
         import traceback
