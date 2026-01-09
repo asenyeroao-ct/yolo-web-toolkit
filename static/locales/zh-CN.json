@@ -5,6 +5,7 @@
   "tabs": {
     "convert": "模型转换",
     "train": "训练模型",
+    "tools": "模型工具",
     "support": "支持"
   },
   "convert": {
@@ -115,6 +116,33 @@
     "metricDflLoss": "分布损失",
     "metricInstances": "实例数",
     "metricSize": "尺寸"
+  },
+  "tools": {
+    "title": "模型工具",
+    "modelTools": "模型工具",
+    "validateAnalyze": "验证与分析",
+    "mapCalculation": "mAP 计算",
+    "modelSelection": "模型选择",
+    "validateAnalyzeBtn": "开始验证与分析",
+    "processing": "处理中...",
+    "validationResult": "验证结果",
+    "analysisResult": "分析结果",
+    "configuration": "配置",
+    "dataYaml": "数据配置 (data.yaml)",
+    "confThreshold": "置信度阈值",
+    "iouThreshold": "IoU 阈值",
+    "calculateMap": "计算 mAP",
+    "calculating": "计算中...",
+    "perClassMap": "每个类别的 mAP",
+    "class": "类别",
+    "mapFailed": "mAP 计算失败",
+    "yamlUploadHint": "已选择 data.yaml（模拟上传）",
+    "selectDataYaml": "请选择或输入 data.yaml 路径"
+  },
+  "errors": {
+    "ptToOnnxFailed": "PyTorch 到 ONNX 转换失败",
+    "onnxToEngineFailed": "ONNX 到 TensorRT Engine 转换失败",
+    "unsupportedType": "不支持的转换类型"
   }
 }
 

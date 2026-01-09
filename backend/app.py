@@ -5,6 +5,7 @@ Flask 後端應用程式
 
 import os
 import json
+import re
 import threading
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory
@@ -21,6 +22,9 @@ sys.path.insert(0, str(project_root))
 from converters.onnx_to_tensorrt import convert_onnx_to_engine, ConversionConfig
 from converters.pt_to_onnx import convert_pt_to_onnx
 from training.train_yolo import train_yolo_model
+from utils.model_validator import validate_model
+from utils.model_analyzer import analyze_model
+from utils.map_calculator import calculate_map
 
 app = Flask(__name__, static_folder='../static', static_url_path='')
 CORS(app)
@@ -151,29 +155,58 @@ def get_models():
     """獲取可用的模型列表"""
     models = []
     
-    # 掃描上傳資料夾
-    upload_path = Path(UPLOAD_FOLDER)
-    for file in upload_path.glob('*.pt'):
-        models.append({
-            'name': file.name,
-            'path': str(file),
-            'type': 'pt',
-            'size': file.stat().st_size
-        })
-    for file in upload_path.glob('*.pth'):
-        models.append({
-            'name': file.name,
-            'path': str(file),
-            'type': 'pt',
-            'size': file.stat().st_size
-        })
-    for file in upload_path.glob('*.onnx'):
-        models.append({
-            'name': file.name,
-            'path': str(file),
-            'type': 'onnx',
-            'size': file.stat().st_size
-        })
+    # 掃描 uploads 和 outputs 資料夾
+    folders_to_scan = [
+        ('uploads', Path(UPLOAD_FOLDER)),
+        ('outputs', Path(OUTPUT_FOLDER))
+    ]
+    
+    for folder_name, folder_path in folders_to_scan:
+        if not folder_path.exists():
+            continue
+            
+        # 掃描 .pt 檔案
+        for file in folder_path.glob('*.pt'):
+            models.append({
+                'name': file.name,
+                'path': str(file),
+                'type': 'pt',
+                'size': file.stat().st_size,
+                'folder': folder_name
+            })
+        
+        # 掃描 .pth 檔案
+        for file in folder_path.glob('*.pth'):
+            models.append({
+                'name': file.name,
+                'path': str(file),
+                'type': 'pt',
+                'size': file.stat().st_size,
+                'folder': folder_name
+            })
+        
+        # 掃描 .onnx 檔案
+        for file in folder_path.glob('*.onnx'):
+            models.append({
+                'name': file.name,
+                'path': str(file),
+                'type': 'onnx',
+                'size': file.stat().st_size,
+                'folder': folder_name
+            })
+        
+        # 掃描 .engine 檔案（TensorRT）
+        for file in folder_path.glob('*.engine'):
+            models.append({
+                'name': file.name,
+                'path': str(file),
+                'type': 'engine',
+                'size': file.stat().st_size,
+                'folder': folder_name
+            })
+    
+    # 按資料夾和名稱排序
+    models.sort(key=lambda x: (x['folder'], x['name']))
     
     return jsonify({'models': models})
 
@@ -280,6 +313,8 @@ def convert_model():
             if conversion_type == 'pt_to_onnx':
                 # PT to ONNX
                 model_name = Path(model_path).stem
+                # 移除模型名稱中已存在的尺寸後綴（如果有）
+                model_name = re.sub(r'_\d+$', '', model_name)
                 output_path = os.path.join(output_folder, f"{model_name}_{imgsz}.onnx")
                 
                 success, result_path = convert_pt_to_onnx(
@@ -298,11 +333,14 @@ def convert_model():
                 else:
                     with task_lock:
                         conversion_tasks[task_id]['status'] = 'failed'
-                        conversion_tasks[task_id]['error'] = '轉換失敗'
+                        conversion_tasks[task_id]['error_code'] = 'pt_to_onnx_failed'
+                        conversion_tasks[task_id]['conversion_step'] = 'pt_to_onnx'
             
             elif conversion_type == 'pt_to_engine':
                 # PT to Engine (先轉 ONNX，再轉 Engine)
                 model_name = Path(model_path).stem
+                # 移除模型名稱中已存在的尺寸後綴（如果有）
+                model_name = re.sub(r'_\d+$', '', model_name)
                 onnx_path = os.path.join(output_folder, f"{model_name}_{imgsz}.onnx")
                 engine_path = os.path.join(output_folder, f"{model_name}_{imgsz}.engine")
                 
@@ -321,7 +359,8 @@ def convert_model():
                 if not success:
                     with task_lock:
                         conversion_tasks[task_id]['status'] = 'failed'
-                        conversion_tasks[task_id]['error'] = 'PT 到 ONNX 轉換失敗'
+                        conversion_tasks[task_id]['error_code'] = 'pt_to_onnx_failed'
+                        conversion_tasks[task_id]['conversion_step'] = 'pt_to_onnx'
                     return
                 
                 # 步驟 2: ONNX to Engine
@@ -353,11 +392,14 @@ def convert_model():
                 else:
                     with task_lock:
                         conversion_tasks[task_id]['status'] = 'failed'
-                        conversion_tasks[task_id]['error'] = 'ONNX 到 Engine 轉換失敗'
+                        conversion_tasks[task_id]['error_code'] = 'onnx_to_engine_failed'
+                        conversion_tasks[task_id]['conversion_step'] = 'onnx_to_engine'
             
             elif conversion_type == 'onnx_to_engine':
                 # ONNX to Engine
                 model_name = Path(model_path).stem
+                # 移除模型名稱中已存在的尺寸後綴（如果有）
+                model_name = re.sub(r'_\d+$', '', model_name)
                 engine_path = os.path.join(output_folder, f"{model_name}_{imgsz}.engine")
                 
                 config = ConversionConfig(
@@ -384,10 +426,12 @@ def convert_model():
                 else:
                     with task_lock:
                         conversion_tasks[task_id]['status'] = 'failed'
-                        conversion_tasks[task_id]['error'] = '轉換失敗'
+                        conversion_tasks[task_id]['error_code'] = 'onnx_to_engine_failed'
+                        conversion_tasks[task_id]['conversion_step'] = 'onnx_to_engine'
             else:
                 with task_lock:
                     conversion_tasks[task_id]['status'] = 'failed'
+                    conversion_tasks[task_id]['error_code'] = 'unsupported_conversion_type'
                     conversion_tasks[task_id]['error'] = f'不支持的轉換類型: {conversion_type}'
         
         except Exception as e:
@@ -667,6 +711,118 @@ def get_training_status(task_id):
             task['metrics'] = []
         
         return jsonify(task)
+
+
+@app.route('/api/validate', methods=['POST'])
+def validate_model_endpoint():
+    """驗證模型"""
+    data = request.json
+    
+    model_path = data.get('model_path')
+    
+    if not model_path or not os.path.exists(model_path):
+        return jsonify({'error': '模型文件不存在'}), 400
+    
+    try:
+        result = validate_model(model_path)
+        
+        return jsonify({
+            'success': True,
+            'is_valid': result.is_valid,
+            'model_type': result.model_type,
+            'input_shape': result.input_shape,
+            'output_shape': result.output_shape,
+            'num_classes': result.num_classes,
+            'errors': result.errors,
+            'warnings': result.warnings,
+            'info': result.info
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/analyze', methods=['POST'])
+def analyze_model_endpoint():
+    """分析模型"""
+    data = request.json
+    
+    model_path = data.get('model_path')
+    
+    if not model_path or not os.path.exists(model_path):
+        return jsonify({'error': '模型文件不存在'}), 400
+    
+    try:
+        info = analyze_model(model_path)
+        
+        return jsonify({
+            'success': True,
+            'model_path': info.model_path,
+            'model_type': info.model_type,
+            'file_size_mb': info.file_size_mb,
+            'input_shape': info.input_shape,
+            'output_shape': info.output_shape,
+            'num_parameters': info.num_parameters,
+            'num_classes': info.num_classes,
+            'opset_version': info.opset_version,
+            'precision': info.precision,
+            'metadata': info.metadata
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/map', methods=['POST'])
+def calculate_map_endpoint():
+    """計算 mAP"""
+    data = request.json
+    
+    model_path = data.get('model_path')
+    data_yaml = data.get('data_yaml')
+    conf_threshold = data.get('conf_threshold', 0.25)
+    iou_threshold = data.get('iou_threshold', 0.45)
+    
+    if not model_path or not os.path.exists(model_path):
+        return jsonify({'error': '模型文件不存在'}), 400
+    
+    if not data_yaml or not os.path.exists(data_yaml):
+        return jsonify({'error': '數據配置文件不存在'}), 400
+    
+    try:
+        result = calculate_map(
+            model_path=model_path,
+            data_yaml=data_yaml,
+            conf_threshold=conf_threshold,
+            iou_threshold=iou_threshold,
+            verbose=True
+        )
+        
+        if result:
+            return jsonify({
+                'success': True,
+                'map_50': result.map_50,
+                'map_50_95': result.map_50_95,
+                'precision': result.precision,
+                'recall': result.recall,
+                'num_classes': result.num_classes,
+                'per_class_map': result.per_class_map,
+                'metrics': result.metrics
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': '無法計算 mAP'
+            }), 500
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 
 if __name__ == '__main__':

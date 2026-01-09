@@ -158,9 +158,10 @@ def load_model_class_names(model_path: str) -> List[str]:
     載入模型類別名稱
     
     嘗試從以下位置載入:
-    1. 模型同目錄的 .names 或 .txt 文件
-    2. 模型同目錄的 _classes.txt 文件
-    3. 模型同目錄的 classes.txt 文件
+    1. ONNX 模型內部的元數據 (metadata_props)
+    2. 模型同目錄的 .names 或 .txt 文件
+    3. 模型同目錄的 _classes.txt 文件
+    4. 模型同目錄的 classes.txt 文件
     
     Args:
         model_path: 模型文件路徑
@@ -168,6 +169,42 @@ def load_model_class_names(model_path: str) -> List[str]:
     Returns:
         類別名稱列表
     """
+    # 首先嘗試從 ONNX 模型元數據中讀取
+    if model_path.lower().endswith('.onnx'):
+        try:
+            import onnx
+            onnx_model = onnx.load(model_path)
+            
+            # 方法1: 從 "classes" 鍵讀取逗號分隔的類別列表
+            for meta in onnx_model.metadata_props:
+                if meta.key == "classes":
+                    class_names = [name.strip() for name in meta.value.split(',') if name.strip()]
+                    if class_names:
+                        return class_names
+            
+            # 方法2: 從 "class_0", "class_1", ... 鍵讀取
+            class_dict = {}
+            for meta in onnx_model.metadata_props:
+                if meta.key.startswith("class_"):
+                    try:
+                        idx = int(meta.key.split("_")[1])
+                        class_dict[idx] = meta.value
+                    except (ValueError, IndexError):
+                        continue
+            
+            if class_dict:
+                # 按索引排序並返回
+                max_idx = max(class_dict.keys())
+                class_names = [class_dict.get(i, f"class_{i}") for i in range(max_idx + 1)]
+                return class_names
+                
+        except ImportError:
+            pass  # onnx 未安裝，繼續嘗試其他方法
+        except Exception as e:
+            if ConversionConfig().verbose:
+                print(f"[警告] 無法從 ONNX 模型讀取類別信息: {e}")
+    
+    # 如果從模型中讀取失敗，嘗試從外部文件讀取
     model_path_obj = Path(model_path)
     candidates = [
         model_path_obj.parent / (model_path_obj.stem + ".names"),

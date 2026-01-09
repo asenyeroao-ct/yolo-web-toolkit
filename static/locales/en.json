@@ -5,6 +5,7 @@
   "tabs": {
     "convert": "Model Convert",
     "train": "Train Model",
+    "tools": "Model Tools",
     "support": "Support"
   },
   "convert": {
@@ -115,6 +116,33 @@
     "metricDflLoss": "dfl_loss",
     "metricInstances": "Instances",
     "metricSize": "Size"
+  },
+  "tools": {
+    "title": "Model Tools",
+    "modelTools": "Model Tools",
+    "validateAnalyze": "Validate & Analyze",
+    "mapCalculation": "mAP Calculation",
+    "modelSelection": "Model Selection",
+    "validateAnalyzeBtn": "Start Validate & Analyze",
+    "processing": "Processing...",
+    "validationResult": "Validation Result",
+    "analysisResult": "Analysis Result",
+    "configuration": "Configuration",
+    "dataYaml": "Data Config (data.yaml)",
+    "confThreshold": "Conf Threshold",
+    "iouThreshold": "IoU Threshold",
+    "calculateMap": "Calculate mAP",
+    "calculating": "Calculating...",
+    "perClassMap": "Per-Class mAP",
+    "class": "Class",
+    "mapFailed": "mAP calculation failed",
+    "yamlUploadHint": "data.yaml selected (simulated upload)",
+    "selectDataYaml": "Please select or enter data.yaml path"
+  },
+  "errors": {
+    "ptToOnnxFailed": "PyTorch to ONNX conversion failed",
+    "onnxToEngineFailed": "ONNX to TensorRT Engine conversion failed",
+    "unsupportedType": "Unsupported conversion type"
   }
 }
 
