@@ -158,6 +158,39 @@ def analyze_onnx_model(model_path: str) -> ModelInfo:
         # 獲取初始值數量
         info.metadata['num_initializers'] = len(model.graph.initializer)
         
+        # 讀取元數據（包括 classes）
+        if model.metadata_props:
+            metadata_dict = {}
+            for prop in model.metadata_props:
+                metadata_dict[prop.key] = prop.value
+            
+            # 提取 classes 資訊
+            if 'classes' in metadata_dict:
+                # 如果有 classes 鍵，解析為列表
+                classes_str = metadata_dict['classes']
+                info.metadata['classes'] = classes_str.split(',') if classes_str else []
+                info.metadata['num_classes'] = len(info.metadata['classes'])
+            elif 'num_classes' in metadata_dict:
+                # 如果有 num_classes，嘗試讀取 class_0, class_1, ...
+                try:
+                    num_classes = int(metadata_dict['num_classes'])
+                    classes = []
+                    for i in range(num_classes):
+                        class_key = f'class_{i}'
+                        if class_key in metadata_dict:
+                            classes.append(metadata_dict[class_key])
+                    if classes:
+                        info.metadata['classes'] = classes
+                        info.metadata['num_classes'] = len(classes)
+                except ValueError:
+                    pass
+            
+            # 保存所有其他元數據
+            for key, value in metadata_dict.items():
+                if not key.startswith('class'):  # 避免重複保存 class_0, class_1 等
+                    if key not in ['classes', 'num_classes']:  # 這些已經處理過了
+                        info.metadata[f'onnx_{key}'] = value
+        
     except Exception as e:
         info.metadata['error'] = str(e)
     

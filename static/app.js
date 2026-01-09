@@ -326,7 +326,29 @@ async function startValidation() {
             </div>`;
             
             if (analyzeData.metadata) {
-                html += `<div class="metadata-list"><strong>Metadata:</strong><pre>${JSON.stringify(analyzeData.metadata, null, 2)}</pre></div>`;
+                // 特別處理 classes 資訊
+                if (analyzeData.metadata.classes && Array.isArray(analyzeData.metadata.classes)) {
+                    html += `<div class="metadata-section">
+                        <strong>Classes (${analyzeData.metadata.num_classes || analyzeData.metadata.classes.length}):</strong>
+                        <div class="classes-list">
+                            ${analyzeData.metadata.classes.map((cls, idx) => 
+                                `<span class="class-badge" title="Class ${idx}">${idx}: ${cls}</span>`
+                            ).join('')}
+                        </div>
+                    </div>`;
+                }
+                
+                // 顯示其他元數據（排除已顯示的 classes 和 num_classes）
+                const otherMetadata = {};
+                for (const [key, value] of Object.entries(analyzeData.metadata)) {
+                    if (key !== 'classes' && key !== 'num_classes') {
+                        otherMetadata[key] = value;
+                    }
+                }
+                
+                if (Object.keys(otherMetadata).length > 0) {
+                    html += `<div class="metadata-list"><strong>Other Metadata:</strong><pre>${JSON.stringify(otherMetadata, null, 2)}</pre></div>`;
+                }
             }
             anaOutput.innerHTML = html;
         } else {
