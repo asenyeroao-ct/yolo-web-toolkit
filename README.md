@@ -83,9 +83,22 @@ A comprehensive web toolkit for YOLO model conversion and training. Supports con
    ```
 
 3. **Install dependencies**:
+   
+   Choose one of the following setup scripts based on your system:
+   
+   **For NVIDIA GPU (CUDA support)**:
    ```bash
-   pip install -r requirements.txt
+   python setup/cuda_setup.py
    ```
+   
+   **For systems without NVIDIA GPU (DirectML support)**:
+   ```bash
+   python setup/directml_setup.py
+   ```
+   
+   These scripts will automatically:
+   - Create a Python virtual environment (venv)
+   - Install all required dependencies including PyTorch with appropriate GPU support
 
 4. **Start the application**:
    ```bash
@@ -164,6 +177,9 @@ yolo-web-toolkit/
 │   └── onnx_to_tensorrt.py # ONNX to TensorRT conversion
 ├── training/               # Training module
 │   └── train_yolo.py      # YOLO model training
+├── setup/                  # Setup scripts
+│   ├── cuda_setup.py      # CUDA environment setup script
+│   └── directml_setup.py  # DirectML environment setup script
 ├── static/                 # Frontend static files
 │   ├── index.html         # Main page
 │   ├── style.css          # Style file
@@ -314,9 +330,22 @@ Thanks to all developers and users who have contributed to this project!
    ```
 
 3. **安装依赖**：
+   
+   根据您的系统选择以下安装脚本之一：
+   
+   **适用于 NVIDIA GPU（CUDA 支持）**：
    ```bash
-   pip install -r requirements.txt
+   python setup/cuda_setup.py
    ```
+   
+   **适用于没有 NVIDIA GPU 的系统（DirectML 支持）**：
+   ```bash
+   python setup/directml_setup.py
+   ```
+   
+   这些脚本将自动：
+   - 创建 Python 虚拟环境 (venv)
+   - 安装所有必需的依赖，包括带有相应 GPU 支持的 PyTorch
 
 4. **启动应用**：
    ```bash
@@ -395,6 +424,9 @@ yolo-web-toolkit/
 │   └── onnx_to_tensorrt.py # ONNX 到 TensorRT 转换
 ├── training/               # 训练模块
 │   └── train_yolo.py      # YOLO 模型训练
+├── setup/                  # 安装脚本
+│   ├── cuda_setup.py      # CUDA 环境安装脚本
+│   └── directml_setup.py  # DirectML 环境安装脚本
 ├── static/                 # 前端静态文件
 │   ├── index.html         # 主页面
 │   ├── style.css          # 样式文件
