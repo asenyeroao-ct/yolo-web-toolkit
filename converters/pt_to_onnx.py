@@ -124,17 +124,27 @@ def convert_pt_to_onnx(
         if verbose:
             print(f"[成功] ONNX 文件已保存到: {onnx_path}")
         
-        # 將類別名稱嵌入到 ONNX 模型元數據中
+        # 將類別名稱和 YOLO 版本嵌入到 ONNX 模型元數據中
         try:
             import onnx
+            from utils.model_validator import extract_yolo_version_from_pt
             
+            # 載入 ONNX 模型
+            onnx_model = onnx.load(onnx_path)
+            
+            # 提取並保存 YOLO 版本
+            yolo_version = extract_yolo_version_from_pt(pt_path, model)
+            if yolo_version:
+                meta_version = onnx_model.metadata_props.add()
+                meta_version.key = "yolo_version"
+                meta_version.value = yolo_version
+                if verbose:
+                    print(f"[信息] YOLO 版本: {yolo_version.upper()}")
+            
+            # 添加類別信息到模型元數據
             if hasattr(model, 'names') and model.names:
                 class_names = list(model.names.values()) if isinstance(model.names, dict) else model.names
                 if class_names:
-                    # 載入 ONNX 模型
-                    onnx_model = onnx.load(onnx_path)
-                    
-                    # 添加類別信息到模型元數據
                     # 方法1: 使用 metadata_props (推薦)
                     meta = onnx_model.metadata_props.add()
                     meta.key = "classes"
@@ -151,19 +161,20 @@ def convert_pt_to_onnx(
                         meta_class.key = f"class_{idx}"
                         meta_class.value = name
                     
-                    # 保存更新後的 ONNX 模型
-                    onnx.save(onnx_model, onnx_path)
-                    
                     if verbose:
                         print(f"[成功] 類別信息已嵌入 ONNX 模型")
                         print(f"[信息] 共 {len(class_names)} 個類別")
                         print(f"[信息] 類別列表: {', '.join(class_names[:5])}{'...' if len(class_names) > 5 else ''}")
+            
+            # 保存更新後的 ONNX 模型
+            onnx.save(onnx_model, onnx_path)
+            
         except ImportError:
             if verbose:
-                print(f"[警告] 未安裝 onnx 包，無法嵌入類別信息")
+                print(f"[警告] 未安裝 onnx 包，無法嵌入元數據信息")
         except Exception as e:
             if verbose:
-                print(f"[警告] 無法嵌入類別信息到 ONNX 模型: {e}")
+                print(f"[警告] 無法嵌入元數據信息到 ONNX 模型: {e}")
                 import traceback
                 traceback.print_exc()
         

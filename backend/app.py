@@ -863,6 +863,8 @@ def validate_model_endpoint():
             'input_shape': result.input_shape,
             'output_shape': result.output_shape,
             'num_classes': result.num_classes,
+            'yolo_version': result.yolo_version,
+            'tensorrt_version': result.info.get('tensorrt_version') if result.model_type == 'engine' else None,
             'errors': result.errors,
             'warnings': result.warnings,
             'info': result.info
@@ -899,6 +901,8 @@ def analyze_model_endpoint():
             'output_shape': info.output_shape,
             'num_parameters': info.num_parameters,
             'num_classes': info.num_classes,
+            'yolo_version': info.yolo_version,
+            'tensorrt_version': info.metadata.get('tensorrt_version') if info.model_type == 'engine' else None,
             'opset_version': info.opset_version,
             'precision': info.precision,
             'metadata': info.metadata

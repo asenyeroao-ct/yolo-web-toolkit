@@ -309,7 +309,9 @@ async function startValidation() {
                 <strong>Status:</strong> ${validateData.is_valid ? 'Valid' : 'Invalid'}
             </div>`;
             html += `<div class="info-list">
-                <div><strong>Type:</strong> ${validateData.model_type}</div>
+                <div><strong>Model Type:</strong> ${validateData.model_type.toUpperCase()}</div>
+                <div><strong>YOLO Version:</strong> ${validateData.yolo_version ? validateData.yolo_version.toUpperCase() : 'N/A'}</div>
+                ${validateData.model_type === 'engine' && validateData.tensorrt_version ? `<div><strong>TensorRT Version:</strong> ${validateData.tensorrt_version}</div>` : ''}
                 <div><strong>Input Shape:</strong> ${JSON.stringify(validateData.input_shape)}</div>
                 <div><strong>Output Shape:</strong> ${JSON.stringify(validateData.output_shape)}</div>
                 <div><strong>Classes:</strong> ${validateData.num_classes || 'N/A'}</div>
@@ -333,7 +335,7 @@ async function startValidation() {
                 <div><strong>File Size:</strong> ${analyzeData.file_size_mb.toFixed(2)} MB</div>
                 <div><strong>Params:</strong> ${analyzeData.num_parameters ? analyzeData.num_parameters.toLocaleString() : 'N/A'}</div>
                 <div><strong>Precision:</strong> ${analyzeData.precision || 'N/A'}</div>
-                <div><strong>Opset:</strong> ${analyzeData.opset_version || 'N/A'}</div>
+                ${analyzeData.model_type === 'onnx' ? `<div><strong>Opset:</strong> ${analyzeData.opset_version || 'N/A'}</div>` : ''}
             </div>`;
             
             if (analyzeData.metadata) {
