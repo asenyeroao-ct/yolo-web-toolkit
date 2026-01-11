@@ -36,6 +36,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     initForm();
     // 初始化工具頁面
     initTools();
+    // 初始化系統資訊頁面
+    initSystemInfo();
     
     loadModels();
     loadFolders();
@@ -58,6 +60,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // 初始更新轉換類型
     updateConversionTypes('');
+    
+    // 優化選項顯示/隱藏
+    const enableOptimizationCheckbox = document.getElementById('enable-optimization');
+    const optimizationOptions = document.getElementById('optimization-options');
+    if (enableOptimizationCheckbox && optimizationOptions) {
+        enableOptimizationCheckbox.addEventListener('change', (e) => {
+            optimizationOptions.style.display = e.target.checked ? 'block' : 'none';
+        });
+    }
 });
 
 // Tab 切換
@@ -975,6 +986,15 @@ async function startTraining() {
     const imgsz = parseInt(document.getElementById('image-size').value) || 640;
     const resume = document.getElementById('resume-training').checked;
     
+    // 優化選項
+    const enableOptimization = document.getElementById('enable-optimization').checked;
+    const minW = parseInt(document.getElementById('min-w').value) || 14;
+    const minH = parseInt(document.getElementById('min-h').value) || 24;
+    const maxInstances = parseInt(document.getElementById('max-instances').value) || 6;
+    const valSplit = parseFloat(document.getElementById('val-split').value) || 0.15;
+    const bgValRatio = parseFloat(document.getElementById('bg-val-ratio').value) || 0.08;
+    const probeEpochs = parseInt(document.getElementById('probe-epochs').value) || 80;
+    
     if (!imagesFolder) {
         alert(window.i18n.t('train.selectImagesFolder'));
         return;
@@ -1027,7 +1047,14 @@ async function startTraining() {
                 epochs: epochs,
                 batch_size: batchSize,
                 imgsz: imgsz,
-                resume: resume
+                resume: resume,
+                enable_optimization: enableOptimization,
+                min_w: minW,
+                min_h: minH,
+                max_instances: maxInstances,
+                val_split: valSplit,
+                bg_val_ratio: bgValRatio,
+                probe_epochs: probeEpochs
             })
         });
         
@@ -1192,3 +1219,115 @@ function showTrainingError(message) {
     }
 }
 
+// 初始化系統資訊頁面
+function initSystemInfo() {
+    const setGpuBtn = document.getElementById('set-gpu-btn');
+    if (setGpuBtn) {
+        setGpuBtn.addEventListener('click', setGpu);
+    }
+    
+    // 當切換到系統分頁時自動刷新資訊
+    document.querySelectorAll('.tab-btn[data-tab="system"]').forEach(btn => {
+        btn.addEventListener('click', loadSystemInfo);
+    });
+    
+    // 初始載入
+    loadSystemInfo();
+}
+
+// 載入系統資訊
+async function loadSystemInfo() {
+    const gpuListContainer = document.getElementById('gpu-list-container');
+    const gpuSelect = document.getElementById('gpu-select');
+    if (!gpuListContainer || !gpuSelect) return;
+    
+    try {
+        const response = await fetch(`${API_BASE}/system-info`);
+        const data = await response.json();
+        
+        // 更新 CUDA 狀態
+        const cudaStatus = document.getElementById('cuda-status');
+        if (cudaStatus) {
+            cudaStatus.textContent = data.cuda_available ? 'Available' : 'Unavailable';
+            cudaStatus.className = `status-value badge ${data.cuda_available ? 'badge-success' : 'badge-error'}`;
+        }
+        const cudaVersion = document.getElementById('cuda-version');
+        if (cudaVersion) cudaVersion.textContent = data.cuda_version || 'N/A';
+        
+        // 更新 TensorRT 狀態
+        const trtStatus = document.getElementById('trt-status');
+        if (trtStatus) {
+            trtStatus.textContent = data.tensorrt_available ? 'Available' : 'Unavailable';
+            trtStatus.className = `status-value badge ${data.tensorrt_available ? 'badge-success' : 'badge-error'}`;
+        }
+        const trtVersion = document.getElementById('trt-version');
+        if (trtVersion) trtVersion.textContent = data.tensorrt_version || 'N/A';
+        
+        // 更新 GPU 列表
+        if (data.cuda_available && data.gpus.length > 0) {
+            let html = '<div class="gpu-grid">';
+            gpuSelect.innerHTML = '';
+            
+            data.gpus.forEach(gpu => {
+                const isActive = gpu.id === data.current_gpu;
+                html += `
+                    <div class="gpu-card ${isActive ? 'active' : ''}">
+                        <div class="gpu-id">#${gpu.id}</div>
+                        <div class="gpu-name">${gpu.name}</div>
+                        <div class="gpu-mem">${gpu.memory.toFixed(1)} GB</div>
+                        ${isActive ? '<div class="active-badge">Active</div>' : ''}
+                    </div>
+                `;
+                
+                const option = document.createElement('option');
+                option.value = gpu.id;
+                option.textContent = `GPU ${gpu.id}: ${gpu.name}`;
+                if (isActive) option.selected = true;
+                gpuSelect.appendChild(option);
+            });
+            html += '</div>';
+            gpuListContainer.innerHTML = html;
+        } else {
+            gpuListContainer.innerHTML = `<div class="alert alert-warning">${window.i18n.t('system.noGpu')}</div>`;
+            gpuSelect.innerHTML = `<option value="">${window.i18n.t('system.noGpu')}</option>`;
+        }
+        
+    } catch (error) {
+        console.error('Failed to load system info:', error);
+        if (gpuListContainer) gpuListContainer.innerHTML = `<div class="alert alert-error">Failed to load system info</div>`;
+    }
+}
+
+// 設置 GPU
+async function setGpu() {
+    const gpuId = parseInt(document.getElementById('gpu-select').value);
+    const btn = document.getElementById('set-gpu-btn');
+    
+    if (isNaN(gpuId)) return;
+    
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = 'Applying...';
+    
+    try {
+        const response = await fetch(`${API_BASE}/set-gpu`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gpu_id: gpuId })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            alert('GPU 設置成功！伺服器將使用新選定的 GPU。');
+            loadSystemInfo();
+        } else {
+            alert('GPU 設置失敗: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Failed to set GPU:', error);
+        alert('GPU 設置失敗: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
+}

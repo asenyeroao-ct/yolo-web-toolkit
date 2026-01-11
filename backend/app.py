@@ -6,25 +6,26 @@ Flask 後端應用程式
 import os
 import json
 import re
+import sys
 import threading
+import queue
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
-# 導入轉換模塊
-import sys
-
 # 添加專案根目錄到 Python 路徑
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from converters.onnx_to_tensorrt import convert_onnx_to_engine, ConversionConfig
-from converters.pt_to_onnx import convert_pt_to_onnx
-from training.train_yolo import train_yolo_model
-from utils.model_validator import validate_model
-from utils.model_analyzer import analyze_model
-from utils.map_calculator import calculate_map
+# 導入 PyTorch（用於 CUDA 檢查，不延遲導入）
+try:
+    import torch
+except ImportError:
+    torch = None
+
+# 注意：其他重型庫（TensorRT, Ultralytics）使用延遲導入
+# 只在需要時才導入，大幅減少啟動時間
 
 app = Flask(__name__, static_folder='../static', static_url_path='')
 CORS(app)
@@ -45,6 +46,46 @@ task_lock = threading.Lock()
 # 訓練任務狀態
 training_tasks = {}
 training_lock = threading.Lock()
+
+# GPU 任務佇列系統
+# 限制同時執行的 GPU 任務數量，避免資源競爭
+gpu_task_queue = queue.Queue()
+gpu_task_lock = threading.Lock()
+gpu_worker_running = False
+
+
+def gpu_task_worker():
+    """GPU 任務工作線程，串行處理 GPU 任務"""
+    while True:
+        try:
+            # 從佇列中取出任務
+            task_func, task_args = gpu_task_queue.get()
+            
+            if task_func is None:  # 結束信號
+                break
+            
+            # 執行任務
+            try:
+                task_func(*task_args)
+            except Exception as e:
+                print(f"[GPU Worker] 任務執行錯誤: {e}")
+                import traceback
+                traceback.print_exc()
+            finally:
+                gpu_task_queue.task_done()
+        except Exception as e:
+            print(f"[GPU Worker] 工作線程錯誤: {e}")
+
+
+def start_gpu_worker():
+    """啟動 GPU 任務工作線程"""
+    global gpu_worker_running
+    with gpu_task_lock:
+        if not gpu_worker_running:
+            worker = threading.Thread(target=gpu_task_worker, daemon=True)
+            worker.start()
+            gpu_worker_running = True
+            print("[INFO] GPU 任務工作線程已啟動")
 
 
 def parse_training_metrics(log_content):
@@ -211,6 +252,67 @@ def get_models():
     return jsonify({'models': models})
 
 
+@app.route('/api/system-info', methods=['GET'])
+def get_system_info():
+    """獲取系統資訊 (GPU, CUDA, TensorRT)"""
+    if torch is None:
+        return jsonify({
+            'cuda_available': False,
+            'cuda_version': None,
+            'gpu_count': 0,
+            'gpus': [],
+            'current_gpu': None,
+            'tensorrt_available': False,
+            'tensorrt_version': None
+        })
+    
+    info = {
+        'cuda_available': torch.cuda.is_available(),
+        'cuda_version': torch.version.cuda if torch.cuda.is_available() else None,
+        'gpu_count': torch.cuda.device_count() if torch.cuda.is_available() else 0,
+        'gpus': [],
+        'current_gpu': torch.cuda.current_device() if torch.cuda.is_available() else None,
+        'tensorrt_available': False,
+        'tensorrt_version': None
+    }
+    
+    if info['cuda_available']:
+        for i in range(info['gpu_count']):
+            info['gpus'].append({
+                'id': i,
+                'name': torch.cuda.get_device_name(i),
+                'memory': torch.cuda.get_device_properties(i).total_memory / (1024**3)  # GB
+            })
+            
+    try:
+        import tensorrt as trt
+        info['tensorrt_available'] = True
+        info['tensorrt_version'] = trt.__version__
+    except ImportError:
+        pass
+        
+    return jsonify(info)
+
+
+@app.route('/api/set-gpu', methods=['POST'])
+def set_gpu():
+    """設置使用的 GPU"""
+    if torch is None:
+        return jsonify({'success': False, 'error': 'PyTorch not available'}), 500
+    
+    data = request.json
+    gpu_id = data.get('gpu_id')
+    
+    if torch.cuda.is_available() and 0 <= gpu_id < torch.cuda.device_count():
+        try:
+            torch.cuda.set_device(gpu_id)
+            return jsonify({'success': True, 'current_gpu': gpu_id})
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+            
+    return jsonify({'success': False, 'error': 'Invalid GPU ID'}), 400
+
+
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     """上傳模型文件"""
@@ -304,9 +406,13 @@ def convert_model():
             'error': None
         }
     
-    # 在後台線程中執行轉換
+    # 在後台線程中執行轉換（使用延遲導入）
     def run_conversion():
         try:
+            # 延遲導入：只在需要時才導入重型庫
+            from converters.pt_to_onnx import convert_pt_to_onnx
+            from converters.onnx_to_tensorrt import convert_onnx_to_engine, ConversionConfig
+            
             with task_lock:
                 conversion_tasks[task_id]['message'] = '正在轉換...'
             
@@ -441,9 +547,11 @@ def convert_model():
                 import traceback
                 conversion_tasks[task_id]['traceback'] = traceback.format_exc()
     
-    thread = threading.Thread(target=run_conversion)
-    thread.daemon = True
-    thread.start()
+    # 確保 GPU 工作線程已啟動
+    start_gpu_worker()
+    
+    # 將任務加入 GPU 佇列（串行處理以避免資源競爭）
+    gpu_task_queue.put((run_conversion, ()))
     
     return jsonify({
         'success': True,
@@ -498,6 +606,14 @@ def train_model():
     batch_size = data.get('batch_size', 16)
     imgsz = data.get('imgsz', 640)
     resume = data.get('resume', False)
+    # 優化選項
+    enable_optimization = data.get('enable_optimization', False)
+    min_w = data.get('min_w', 14)
+    min_h = data.get('min_h', 24)
+    max_instances = data.get('max_instances', 6)
+    val_split = data.get('val_split', 0.15)
+    bg_val_ratio = data.get('bg_val_ratio', 0.08)
+    probe_epochs = data.get('probe_epochs', 80)
     
     # 驗證路徑（允許相對路徑或絕對路徑）
     # 如果路徑不存在，嘗試在當前工作目錄下查找
@@ -557,11 +673,13 @@ def train_model():
             'log': ''
         }
     
-    # 在後台線程中執行訓練
+    # 在後台線程中執行訓練（使用延遲導入）
     def run_training():
-        import sys
         import time
         from io import StringIO
+        
+        # 延遲導入：只在需要時才導入重型庫
+        from training.train_yolo import train_yolo_model
         
         # 捕獲標準輸出
         log_buffer = StringIO()
@@ -620,7 +738,14 @@ def train_model():
                 batch_size=batch_size,
                 imgsz=imgsz,
                 resume=resume,
-                verbose=True
+                verbose=True,
+                enable_optimization=enable_optimization,
+                min_w=min_w,
+                min_h=min_h,
+                max_instances=max_instances,
+                val_split=val_split,
+                bg_val_ratio=bg_val_ratio,
+                probe_epochs=probe_epochs
             )
             
             # 停止日誌更新線程
@@ -673,9 +798,11 @@ def train_model():
                 training_tasks[task_id]['log'] = log_content + '\n' + traceback.format_exc()
                 training_tasks[task_id]['metrics'] = metrics
     
-    thread = threading.Thread(target=run_training)
-    thread.daemon = True
-    thread.start()
+    # 確保 GPU 工作線程已啟動
+    start_gpu_worker()
+    
+    # 將任務加入 GPU 佇列（串行處理以避免資源競爭）
+    gpu_task_queue.put((run_training, ()))
     
     return jsonify({
         'success': True,
@@ -716,6 +843,9 @@ def get_training_status(task_id):
 @app.route('/api/validate', methods=['POST'])
 def validate_model_endpoint():
     """驗證模型"""
+    # 延遲導入：只在需要時才導入
+    from utils.model_validator import validate_model
+    
     data = request.json
     
     model_path = data.get('model_path')
@@ -747,6 +877,9 @@ def validate_model_endpoint():
 @app.route('/api/analyze', methods=['POST'])
 def analyze_model_endpoint():
     """分析模型"""
+    # 延遲導入：只在需要時才導入
+    from utils.model_analyzer import analyze_model
+    
     data = request.json
     
     model_path = data.get('model_path')
@@ -780,6 +913,9 @@ def analyze_model_endpoint():
 @app.route('/api/map', methods=['POST'])
 def calculate_map_endpoint():
     """計算 mAP"""
+    # 延遲導入：只在需要時才導入
+    from utils.map_calculator import calculate_map
+    
     data = request.json
     
     model_path = data.get('model_path')

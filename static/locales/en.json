@@ -6,7 +6,8 @@
     "convert": "Model Convert",
     "train": "Train Model",
     "tools": "Model Tools",
-    "support": "Support"
+    "support": "Support",
+    "system": "System Info"
   },
   "convert": {
     "title": "Model Convert",
@@ -115,7 +116,21 @@
     "metricClsLoss": "cls_loss",
     "metricDflLoss": "dfl_loss",
     "metricInstances": "Instances",
-    "metricSize": "Size"
+    "metricSize": "Size",
+    "enableOptimization": "Enable Optimization Mode",
+    "datasetCleaning": "Dataset Cleaning Options",
+    "minBoxWidth": "Min Box Width (px)",
+    "minBoxWidthDesc": "Remove boxes with width smaller than this value (background images are preserved)",
+    "minBoxHeight": "Min Box Height (px)",
+    "minBoxHeightDesc": "Remove boxes with height smaller than this value (background images are preserved)",
+    "maxInstances": "Max Instances",
+    "maxInstancesDesc": "Maximum number of instances per image, excess will be randomly removed",
+    "validationSet": "Validation Set Options",
+    "valSplit": "Validation Split Ratio",
+    "bgValRatio": "Background Image Ratio",
+    "probeTraining": "Probe Training Options",
+    "probeEpochs": "Probe Training Epochs",
+    "probeEpochsDesc": "Short-term training to analyze model learning speed, results will be used to auto-adjust final training parameters"
   },
   "tools": {
     "title": "Model Tools",
@@ -143,6 +158,15 @@
     "ptToOnnxFailed": "PyTorch to ONNX conversion failed",
     "onnxToEngineFailed": "ONNX to TensorRT Engine conversion failed",
     "unsupportedType": "Unsupported conversion type"
+  },
+  "system": {
+    "title": "System Info",
+    "gpuTitle": "GPU Information",
+    "statusTitle": "Library Status",
+    "selectGpu": "Select Active GPU",
+    "noGpu": "No GPU detected",
+    "apply": "Apply Settings",
+    "gpuNotice": "Note: Changing GPU will reset the CUDA context."
   }
 }
 

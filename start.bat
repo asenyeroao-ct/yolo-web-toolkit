@@ -31,16 +31,11 @@ echo.
 echo [INFO] Checking dependencies...
 python -c "import flask" >nul 2>&1
 if errorlevel 1 (
-    echo [INFO] Dependencies not installed, installing...
-    echo [INFO] PyTorch will be installed with CUDA 12.6 support (configured in requirements.txt)
-    pip install -r requirements.txt
-    if errorlevel 1 (
-        echo [ERROR] Failed to install dependencies
-        echo [INFO] Please run setup.bat first to set up the environment
-        pause
-        exit /b 1
-    )
-    echo [SUCCESS] Dependencies installed
+    echo [ERROR] Dependencies not installed
+    echo [INFO] Please run setup.bat first to set up the environment
+    echo [INFO] Or run: python cuda_setup.py
+    pause
+    exit /b 1
 )
 
 echo.

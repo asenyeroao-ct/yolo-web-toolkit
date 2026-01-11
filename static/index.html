@@ -55,6 +55,14 @@
                     </svg>
                     <span data-i18n="tabs.support">Support</span>
                 </button>
+                <button class="nav-item tab-btn" data-tab="system">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                        <line x1="8" y1="21" x2="16" y2="21"></line>
+                        <line x1="12" y1="17" x2="12" y2="21"></line>
+                    </svg>
+                    <span data-i18n="tabs.system">System Info</span>
+                </button>
             </nav>
 
             <div class="sidebar-footer">
@@ -266,6 +274,58 @@
                                     <input type="number" id="image-size" class="form-control" value="640">
                                 </div>
                                 <label class="checkbox-label"><input type="checkbox" id="resume-training"> <span data-i18n="train.resumeTraining">Resume Training</span></label>
+                                
+                                <!-- 優化選項 -->
+                                <div class="optimization-section" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                                    <label class="checkbox-label" style="margin-bottom: 15px;">
+                                        <input type="checkbox" id="enable-optimization"> 
+                                        <span data-i18n="train.enableOptimization">啟用優化模式（數據集清理、探針訓練、動態超參數）</span>
+                                    </label>
+                                    
+                                    <div id="optimization-options" style="display: none; margin-top: 15px;">
+                                        <h4 style="margin-bottom: 15px; font-size: 14px; font-weight: 600;" data-i18n="train.datasetCleaning">數據集清理選項</h4>
+                                        
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label data-i18n="train.minBoxWidth">最小框寬度 (像素)</label>
+                                                <input type="number" id="min-w" class="form-control" value="14" min="1">
+                                                <small style="color: var(--text-secondary); font-size: 12px;" data-i18n="train.minBoxWidthDesc">移除寬度小於此值的框</small>
+                                            </div>
+                                            <div class="form-group">
+                                                <label data-i18n="train.minBoxHeight">最小框高度 (像素)</label>
+                                                <input type="number" id="min-h" class="form-control" value="24" min="1">
+                                                <small style="color: var(--text-secondary); font-size: 12px;" data-i18n="train.minBoxHeightDesc">移除高度小於此值的框</small>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="form-group">
+                                            <label data-i18n="train.maxInstances">最大實例數量</label>
+                                            <input type="number" id="max-instances" class="form-control" value="6" min="1">
+                                            <small style="color: var(--text-secondary); font-size: 12px;" data-i18n="train.maxInstancesDesc">每張圖像最多保留的實例數量</small>
+                                        </div>
+                                        
+                                        <h4 style="margin-top: 20px; margin-bottom: 15px; font-size: 14px; font-weight: 600;" data-i18n="train.validationSet">驗證集選項</h4>
+                                        
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label data-i18n="train.valSplit">驗證集比例</label>
+                                                <input type="number" id="val-split" class="form-control" value="0.15" step="0.01" min="0.01" max="0.5">
+                                            </div>
+                                            <div class="form-group">
+                                                <label data-i18n="train.bgValRatio">背景圖像比例</label>
+                                                <input type="number" id="bg-val-ratio" class="form-control" value="0.08" step="0.01" min="0" max="1">
+                                            </div>
+                                        </div>
+                                        
+                                        <h4 style="margin-top: 20px; margin-bottom: 15px; font-size: 14px; font-weight: 600;" data-i18n="train.probeTraining">探針訓練選項</h4>
+                                        
+                                        <div class="form-group">
+                                            <label data-i18n="train.probeEpochs">探針訓練輪數</label>
+                                            <input type="number" id="probe-epochs" class="form-control" value="80" min="20" max="200">
+                                            <small style="color: var(--text-secondary); font-size: 12px;" data-i18n="train.probeEpochsDesc">用於分析模型學習速度的短期訓練</small>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -439,25 +499,25 @@
                             <section class="support-section">
                                 <h3 data-i18n="support.github">GitHub</h3>
                                 <p data-i18n="support.githubDesc">Source code and documentation.</p>
-                            <a href="https://github.com/asenyeroao-ct/yolo-web-toolkit" target="_blank" class="btn btn-secondary">
-                                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                                </svg>
-                                <span data-i18n="support.visitGithub">Visit GitHub</span>
-                            </a>
-                        </section>
+                                <a href="https://github.com/asenyeroao-ct/yolo-web-toolkit" target="_blank" class="btn btn-secondary">
+                                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                                    </svg>
+                                    <span data-i18n="support.visitGithub">Visit GitHub</span>
+                                </a>
+                            </section>
 
-                        <section class="support-section">
-                            <h3 data-i18n="support.discord">Discord</h3>
-                            <p data-i18n="support.discordDesc">Community and support.</p>
-                            <a href="https://discord.gg/7dwUjfbP" target="_blank" class="btn btn-secondary">
-                                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                                </svg>
-                                <span data-i18n="support.joinDiscord">Join Discord</span>
-                            </a>
-                        </section>
+                            <section class="support-section">
+                                <h3 data-i18n="support.discord">Discord</h3>
+                                <p data-i18n="support.discordDesc">Community and support.</p>
+                                <a href="https://discord.gg/7dwUjfbP" target="_blank" class="btn btn-secondary">
+                                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                                    </svg>
+                                    <span data-i18n="support.joinDiscord">Join Discord</span>
+                                </a>
+                            </section>
                         </div>
 
                         <section class="support-section mt-30">
@@ -478,6 +538,52 @@
                             <h3 data-i18n="support.about">About</h3>
                             <p data-i18n="support.aboutDesc">Unified tool for YOLO optimization and training.</p>
                         </section>
+                    </div>
+                </div>
+
+                <!-- 系統資訊頁面 -->
+                <div id="system-tab" class="tab-content">
+                    <div class="card">
+                        <div class="system-info-grid">
+                            <div class="form-section">
+                                <h3 data-i18n="system.gpuTitle">GPU Information</h3>
+                                <div id="gpu-list-container">
+                                    <div class="loader"></div>
+                                </div>
+                                <div class="form-group mt-20">
+                                    <label for="gpu-select" data-i18n="system.selectGpu">Select Active GPU</label>
+                                    <div class="input-group">
+                                        <select id="gpu-select" class="form-control">
+                                            <option value="" data-i18n="system.noGpu">No GPU detected</option>
+                                        </select>
+                                        <button id="set-gpu-btn" class="btn btn-primary" data-i18n="system.apply">Apply</button>
+                                    </div>
+                                    <small class="help-text" data-i18n="system.gpuNotice">Note: Changing GPU will restart the CUDA context.</small>
+                                </div>
+                            </div>
+
+                            <div class="form-section">
+                                <h3 data-i18n="system.statusTitle">Library Status</h3>
+                                <div class="status-list">
+                                    <div class="status-item">
+                                        <span class="status-label">CUDA</span>
+                                        <span id="cuda-status" class="status-value badge">-</span>
+                                    </div>
+                                    <div class="status-item">
+                                        <span class="status-label">CUDA Version</span>
+                                        <span id="cuda-version" class="status-value">-</span>
+                                    </div>
+                                    <div class="status-item">
+                                        <span class="status-label">TensorRT</span>
+                                        <span id="trt-status" class="status-value badge">-</span>
+                                    </div>
+                                    <div class="status-item">
+                                        <span class="status-label">TensorRT Version</span>
+                                        <span id="trt-version" class="status-value">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

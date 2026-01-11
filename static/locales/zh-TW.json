@@ -6,7 +6,8 @@
     "convert": "模型轉換",
     "train": "訓練模型",
     "tools": "模型工具",
-    "support": "支援"
+    "support": "支援",
+    "system": "系統資訊"
   },
   "convert": {
     "title": "模型轉換",
@@ -115,7 +116,21 @@
     "metricClsLoss": "分類損失",
     "metricDflLoss": "分佈損失",
     "metricInstances": "實例數",
-    "metricSize": "尺寸"
+    "metricSize": "尺寸",
+    "enableOptimization": "啟用優化模式",
+    "datasetCleaning": "數據集清理選項",
+    "minBoxWidth": "最小框寬度",
+    "minBoxWidthDesc": "移除寬度小於此值的框（背景圖像會保留）",
+    "minBoxHeight": "最小框高度",
+    "minBoxHeightDesc": "移除高度小於此值的框（背景圖像會保留）",
+    "maxInstances": "最大實例數量",
+    "maxInstancesDesc": "每張圖像最多保留的實例數量，超過的將被隨機移除",
+    "validationSet": "驗證集選項",
+    "valSplit": "驗證集比例",
+    "bgValRatio": "背景圖像比例",
+    "probeTraining": "探針訓練選項",
+    "probeEpochs": "探針訓練輪數",
+    "probeEpochsDesc": "用於分析模型學習速度的短期訓練，結果將用於自動調整最終訓練參數"
   },
   "tools": {
     "title": "模型工具",
@@ -143,6 +158,15 @@
     "ptToOnnxFailed": "PyTorch 到 ONNX 轉換失敗",
     "onnxToEngineFailed": "ONNX 到 TensorRT Engine 轉換失敗",
     "unsupportedType": "不支持的轉換類型"
+  },
+  "system": {
+    "title": "系統資訊",
+    "gpuTitle": "GPU 資訊",
+    "statusTitle": "庫狀態",
+    "selectGpu": "選擇使用的 GPU",
+    "noGpu": "未檢測到 GPU",
+    "apply": "應用設置",
+    "gpuNotice": "注意：切換 GPU 會重置 CUDA 上下文。"
   }
 }
 

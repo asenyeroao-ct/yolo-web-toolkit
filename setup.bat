@@ -14,83 +14,87 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [INFO] Detected Python version:
-python --version
-echo.
-
-REM Check if virtual environment already exists
-if exist "venv\" (
-    echo [WARNING] Virtual environment already exists
-    set /p overwrite="Do you want to recreate the virtual environment? (Y/N): "
-    if /i "%overwrite%"=="Y" (
-        echo [INFO] Deleting old virtual environment...
-        rmdir /s /q venv
-    ) else (
-        echo [INFO] Skipping virtual environment creation, using existing environment
-        goto install_deps
-    )
-)
-
-REM Create virtual environment
-echo [INFO] Creating virtual environment...
-python -m venv venv
+echo [INFO] Upgrading pip...
+python.exe -m pip install --upgrade pip
 if errorlevel 1 (
-    echo [ERROR] Failed to create virtual environment
-    pause
-    exit /b 1
-)
-echo [SUCCESS] Virtual environment created
-echo.
-
-:install_deps
-REM Activate virtual environment and upgrade pip
-echo [INFO] Activating virtual environment and upgrading pip...
-call venv\Scripts\activate.bat
-if errorlevel 1 (
-    echo [ERROR] Failed to activate virtual environment
-    pause
-    exit /b 1
-)
-
-python -m pip install --upgrade pip
-if errorlevel 1 (
-    echo [WARNING] Failed to upgrade pip, continuing with dependency installation...
+    echo [WARNING] Failed to upgrade pip, continuing with setup...
 ) else (
     echo [SUCCESS] Pip upgraded successfully
 )
 echo.
 
-REM Check if requirements.txt exists
-if not exist "requirements.txt" (
-    echo [ERROR] requirements.txt file not found
-    pause
-    exit /b 1
-)
+echo [INFO] Please select setup type:
+echo.
+echo   1. Setup CUDA (for NVIDIA GPU)
+echo   2. Setup DirectML (for systems without NVIDIA GPU)
+echo.
+set /p choice="Enter your choice (1 or 2): "
 
-REM Install dependencies
-echo [INFO] Installing dependencies...
-echo [INFO] PyTorch will be installed with CUDA 12.6 support (configured in requirements.txt)
+if "%choice%"=="1" goto setup_cuda
+if "%choice%"=="2" goto setup_directml
+
+echo [ERROR] Invalid choice. Please enter 1 or 2.
+pause
+exit /b 1
+
+:setup_cuda
+echo.
+echo [INFO] Running CUDA setup...
+echo [INFO] PyTorch will be installed with CUDA 12.6 support
 echo [INFO] This may take a few minutes, please wait...
 echo.
-pip install -r requirements.txt
+
+REM Check if cuda_setup.py exists
+if not exist "cuda_setup.py" (
+    echo [ERROR] cuda_setup.py file not found
+    echo [INFO] Please ensure cuda_setup.py is in the current directory
+    pause
+    exit /b 1
+)
+
+REM Run cuda_setup.py
+python cuda_setup.py
 if errorlevel 1 (
     echo.
-    echo [ERROR] Failed to install dependencies
-    echo [INFO] Please check the error messages, some dependencies may need manual installation
+    echo [ERROR] CUDA setup failed
+    echo [INFO] Please check the error messages above
     pause
     exit /b 1
 )
 
 echo.
-echo ====================================
-echo   Setup Complete!
-echo ====================================
-echo.
-echo [INFO] Virtual environment created and configured
-echo [INFO] To activate virtual environment manually, use:
-echo        venv\Scripts\activate
-echo.
-echo [INFO] Or run start.bat to launch the application
-echo.
+echo [INFO] CUDA setup completed successfully!
 pause
+exit /b 0
+
+:setup_directml
+echo.
+echo [INFO] Running DirectML setup...
+echo [INFO] PyTorch will be installed with DirectML support
+echo [INFO] This is for systems without NVIDIA GPU
+echo [INFO] This may take a few minutes, please wait...
+echo.
+
+REM Check if directml_setup.py exists
+if not exist "directml_setup.py" (
+    echo [ERROR] directml_setup.py file not found
+    echo [INFO] Please ensure directml_setup.py is in the current directory
+    pause
+    exit /b 1
+)
+
+REM Run directml_setup.py
+python directml_setup.py
+if errorlevel 1 (
+    echo.
+    echo [ERROR] DirectML setup failed
+    echo [INFO] Please check the error messages above
+    pause
+    exit /b 1
+)
+
+echo.
+echo [INFO] DirectML setup completed successfully!
+pause
+exit /b 0
 

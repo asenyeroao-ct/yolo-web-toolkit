@@ -29,7 +29,8 @@ from dataclasses import dataclass
 try:
     import tensorrt as trt
     import pycuda.driver as cuda
-    import pycuda.autoinit
+    # 不使用 pycuda.autoinit，改為按需初始化以加快導入速度
+    # import pycuda.autoinit
 except ImportError as e:
     raise ImportError(
         "需要安裝 TensorRT 和 PyCUDA。請確保已安裝:\n"
@@ -41,6 +42,37 @@ except ImportError as e:
 
 # TensorRT Logger
 TRT_LOGGER = trt.Logger(trt.Logger.WARNING)
+
+# CUDA 初始化標誌
+_cuda_initialized = False
+_cuda_init_lock = None
+
+
+def _ensure_cuda_initialized():
+    """確保 CUDA 已初始化（按需初始化）"""
+    global _cuda_initialized, _cuda_init_lock
+    
+    if _cuda_initialized:
+        return
+    
+    # 延遲導入 threading 以避免循環導入
+    if _cuda_init_lock is None:
+        import threading
+        _cuda_init_lock = threading.Lock()
+    
+    with _cuda_init_lock:
+        if not _cuda_initialized:
+            try:
+                cuda.init()
+                # 創建 CUDA 上下文
+                device = cuda.Device(0)
+                ctx = device.make_context()
+                import atexit
+                atexit.register(ctx.pop)
+                _cuda_initialized = True
+            except Exception as e:
+                print(f"[警告] CUDA 初始化失敗: {e}")
+                raise
 
 
 @dataclass
@@ -605,6 +637,9 @@ def convert_onnx_to_engine(
         ...     print(f"進度: {current}/{total}")
         >>> success, engine_path = convert_onnx_to_engine("model.onnx", progress_callback=progress)
     """
+    # 確保 CUDA 已初始化（按需初始化）
+    _ensure_cuda_initialized()
+    
     if config is None:
         config = ConversionConfig()
     
