@@ -6,6 +6,7 @@
 """
 
 import os
+import ast
 from pathlib import Path
 from typing import Optional, Dict, List
 from dataclasses import dataclass
@@ -355,11 +356,13 @@ def analyze_onnx_model(model_path: str) -> ModelInfo:
                 metadata_dict[prop.key] = prop.value
             
             # 提取 classes 資訊
+            classes_extracted = False
             if 'classes' in metadata_dict:
                 # 如果有 classes 鍵，解析為列表
                 classes_str = metadata_dict['classes']
                 info.metadata['classes'] = classes_str.split(',') if classes_str else []
                 info.metadata['num_classes'] = len(info.metadata['classes'])
+                classes_extracted = True
             elif 'num_classes' in metadata_dict:
                 # 如果有 num_classes，嘗試讀取 class_0, class_1, ...
                 try:
@@ -372,13 +375,55 @@ def analyze_onnx_model(model_path: str) -> ModelInfo:
                     if classes:
                         info.metadata['classes'] = classes
                         info.metadata['num_classes'] = len(classes)
+                        classes_extracted = True
                 except ValueError:
                     pass
+            
+            # 如果還沒有提取到 classes，嘗試從 onnx_names 或 names 提取
+            if not classes_extracted:
+                # 檢查 onnx_names 或 names
+                names_key = None
+                if 'onnx_names' in metadata_dict:
+                    names_key = 'onnx_names'
+                elif 'names' in metadata_dict:
+                    names_key = 'names'
+                
+                if names_key:
+                    try:
+                        # 解析字符串化的字典，例如: "{0: 'player', 1: 'bot', ...}"
+                        names_str = metadata_dict[names_key]
+                        # 使用 ast.literal_eval 安全地解析字符串化的字典
+                        names_dict = ast.literal_eval(names_str)
+                        
+                        # 將字典轉換為有序列表（按鍵排序）
+                        if isinstance(names_dict, dict):
+                            # 確保按照數字鍵排序
+                            def sort_key(item):
+                                key = item[0]
+                                # 如果鍵是整數，直接使用
+                                if isinstance(key, int):
+                                    return key
+                                # 如果鍵是字符串數字，轉換為整數
+                                try:
+                                    return int(key)
+                                except (ValueError, TypeError):
+                                    # 如果不是數字，按字符串排序
+                                    return key
+                            
+                            sorted_items = sorted(names_dict.items(), key=sort_key)
+                            classes = [name for _, name in sorted_items]
+                            info.metadata['classes'] = classes
+                            info.metadata['num_classes'] = len(classes)
+                            classes_extracted = True
+                    except (ValueError, SyntaxError, TypeError) as e:
+                        # 如果解析失敗，記錄錯誤但繼續處理其他元數據
+                        pass
             
             # 保存所有其他元數據
             for key, value in metadata_dict.items():
                 if not key.startswith('class'):  # 避免重複保存 class_0, class_1 等
-                    if key not in ['classes', 'num_classes']:  # 這些已經處理過了
+                    # 這些已經處理過了，不需要保存
+                    if key not in ['classes', 'num_classes', 'names', 'onnx_names']:
                         info.metadata[f'onnx_{key}'] = value
         
     except Exception as e:
