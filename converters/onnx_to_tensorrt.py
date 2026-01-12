@@ -185,7 +185,167 @@ def get_model_input_shape(onnx_path: str, verbose: bool = False) -> Optional[Tup
         return None
 
 
-def load_model_class_names(model_path: str) -> List[str]:
+def load_model_metadata(model_path: str, verbose: bool = False) -> dict:
+    """
+    載入模型元數據（包括類別信息）
+    
+    從 ONNX 模型的 metadata_props 中讀取所有元數據。
+    如果無法從 metadata 讀取，會嘗試從外部文件或模型結構推斷。
+    
+    Args:
+        model_path: 模型文件路徑
+        verbose: 是否輸出詳細信息
+        
+    Returns:
+        包含元數據的字典，包括 'class_names', 'num_classes', 'yolo_version' 等
+    """
+    metadata = {}
+    
+    # 首先嘗試從 ONNX 模型元數據中讀取
+    if model_path.lower().endswith('.onnx'):
+        try:
+            import onnx
+            onnx_model = onnx.load(model_path)
+            
+            if verbose:
+                print(f"[信息] 正在讀取 ONNX 模型元數據: {model_path}")
+            
+            # 讀取所有 metadata_props
+            if onnx_model.metadata_props:
+                for meta in onnx_model.metadata_props:
+                    metadata[meta.key] = meta.value
+                if verbose:
+                    print(f"[信息] 找到 {len(metadata)} 個 metadata 屬性: {list(metadata.keys())}")
+            else:
+                if verbose:
+                    print("[警告] ONNX 模型沒有 metadata_props")
+            
+            # 提取類別信息
+            class_names = []
+            
+            # 方法1: 從 "classes" 鍵讀取逗號分隔的類別列表
+            if "classes" in metadata:
+                class_names = [name.strip() for name in metadata["classes"].split(',') if name.strip()]
+                if verbose:
+                    print(f"[信息] 從 'classes' metadata 讀取到 {len(class_names)} 個類別")
+            
+            # 方法2: 從 "class_0", "class_1", ... 鍵讀取
+            if not class_names:
+                class_dict = {}
+                for key, value in metadata.items():
+                    if key.startswith("class_"):
+                        try:
+                            idx = int(key.split("_")[1])
+                            class_dict[idx] = value
+                        except (ValueError, IndexError):
+                            continue
+                
+                if class_dict:
+                    # 按索引排序並返回
+                    max_idx = max(class_dict.keys())
+                    class_names = [class_dict.get(i, f"class_{i}") for i in range(max_idx + 1)]
+                    if verbose:
+                        print(f"[信息] 從 'class_*' metadata 讀取到 {len(class_names)} 個類別")
+            
+            # 更新 metadata
+            if class_names:
+                metadata['class_names'] = class_names
+                metadata['num_classes'] = len(class_names)
+            elif 'num_classes' in metadata:
+                # 如果有 num_classes 但沒有類別名稱，嘗試從 class_* 鍵讀取
+                try:
+                    num_classes = int(metadata['num_classes'])
+                    class_dict = {}
+                    for i in range(num_classes):
+                        class_key = f'class_{i}'
+                        if class_key in metadata:
+                            class_dict[i] = metadata[class_key]
+                    if class_dict:
+                        class_names = [class_dict.get(i, f"class_{i}") for i in range(num_classes)]
+                        metadata['class_names'] = class_names
+                        if verbose:
+                            print(f"[信息] 從 'num_classes' 和 'class_*' metadata 推斷出 {len(class_names)} 個類別")
+                except (ValueError, KeyError) as e:
+                    if verbose:
+                        print(f"[警告] 無法從 num_classes 推斷類別: {e}")
+            
+            # 如果仍然沒有類別信息，嘗試從輸出層推斷類別數量（YOLO 模型）
+            if 'num_classes' not in metadata and len(onnx_model.graph.output) > 0:
+                try:
+                    output_tensor = onnx_model.graph.output[0]
+                    if output_tensor.type.tensor_type.shape.dim:
+                        # YOLO 輸出通常是 [batch, num_boxes, 5+num_classes] 或 [batch, num_classes, H, W]
+                        shape = []
+                        for dim in output_tensor.type.tensor_type.shape.dim:
+                            if dim.dim_value > 0:
+                                shape.append(int(dim.dim_value))
+                        
+                        if len(shape) >= 2:
+                            # 嘗試推斷類別數量
+                            # 如果最後一維很大，可能是 [batch, boxes, 5+classes] 格式
+                            if len(shape) == 3 and shape[2] > 5:
+                                inferred_classes = shape[2] - 5  # 減去 x, y, w, h, conf
+                                metadata['num_classes'] = inferred_classes
+                                if verbose:
+                                    print(f"[信息] 從輸出層推斷類別數量: {inferred_classes} (輸出形狀: {shape})")
+                            # 如果是 [batch, classes, H, W] 格式
+                            elif len(shape) == 4 and shape[1] > 1:
+                                inferred_classes = shape[1]
+                                metadata['num_classes'] = inferred_classes
+                                if verbose:
+                                    print(f"[信息] 從輸出層推斷類別數量: {inferred_classes} (輸出形狀: {shape})")
+                except Exception as e:
+                    if verbose:
+                        print(f"[警告] 無法從輸出層推斷類別數量: {e}")
+                
+        except ImportError:
+            if verbose:
+                print("[警告] onnx 模塊未安裝，無法讀取模型元數據")
+        except Exception as e:
+            print(f"[警告] 無法從 ONNX 模型讀取元數據: {e}")
+            if verbose:
+                import traceback
+                traceback.print_exc()
+    
+    # 如果從模型中讀取失敗，嘗試從外部文件讀取類別名稱
+    if 'class_names' not in metadata or not metadata.get('class_names'):
+        model_path_obj = Path(model_path)
+        candidates = [
+            model_path_obj.parent / (model_path_obj.stem + ".names"),
+            model_path_obj.parent / (model_path_obj.stem + ".txt"),
+            model_path_obj.parent / (model_path_obj.stem + "_classes.txt"),
+            model_path_obj.parent / (model_path_obj.stem + "_classes.names"),
+            model_path_obj.parent / "classes.txt",
+        ]
+        
+        if verbose:
+            print(f"[信息] 嘗試從外部文件讀取類別信息...")
+        
+        for candidate in candidates:
+            if candidate.exists():
+                try:
+                    if verbose:
+                        print(f"[信息] 找到類別文件: {candidate}")
+                    with open(candidate, "r", encoding="utf-8") as f:
+                        names = []
+                        for line in f:
+                            line = line.strip()
+                            if line and not line.startswith("#"):
+                                names.append(line)
+                        if names:
+                            metadata['class_names'] = names
+                            metadata['num_classes'] = len(names)
+                            if verbose:
+                                print(f"[成功] 從文件讀取到 {len(names)} 個類別")
+                            break
+                except Exception as e:
+                    if verbose:
+                        print(f"[警告] 無法讀取類別文件 {candidate}: {e}")
+    
+    return metadata
+
+
+def load_model_class_names(model_path: str, verbose: bool = False) -> List[str]:
     """
     載入模型類別名稱
     
@@ -197,71 +357,13 @@ def load_model_class_names(model_path: str) -> List[str]:
     
     Args:
         model_path: 模型文件路徑
+        verbose: 是否輸出詳細信息
         
     Returns:
         類別名稱列表
     """
-    # 首先嘗試從 ONNX 模型元數據中讀取
-    if model_path.lower().endswith('.onnx'):
-        try:
-            import onnx
-            onnx_model = onnx.load(model_path)
-            
-            # 方法1: 從 "classes" 鍵讀取逗號分隔的類別列表
-            for meta in onnx_model.metadata_props:
-                if meta.key == "classes":
-                    class_names = [name.strip() for name in meta.value.split(',') if name.strip()]
-                    if class_names:
-                        return class_names
-            
-            # 方法2: 從 "class_0", "class_1", ... 鍵讀取
-            class_dict = {}
-            for meta in onnx_model.metadata_props:
-                if meta.key.startswith("class_"):
-                    try:
-                        idx = int(meta.key.split("_")[1])
-                        class_dict[idx] = meta.value
-                    except (ValueError, IndexError):
-                        continue
-            
-            if class_dict:
-                # 按索引排序並返回
-                max_idx = max(class_dict.keys())
-                class_names = [class_dict.get(i, f"class_{i}") for i in range(max_idx + 1)]
-                return class_names
-                
-        except ImportError:
-            pass  # onnx 未安裝，繼續嘗試其他方法
-        except Exception as e:
-            if ConversionConfig().verbose:
-                print(f"[警告] 無法從 ONNX 模型讀取類別信息: {e}")
-    
-    # 如果從模型中讀取失敗，嘗試從外部文件讀取
-    model_path_obj = Path(model_path)
-    candidates = [
-        model_path_obj.parent / (model_path_obj.stem + ".names"),
-        model_path_obj.parent / (model_path_obj.stem + ".txt"),
-        model_path_obj.parent / (model_path_obj.stem + "_classes.txt"),
-        model_path_obj.parent / (model_path_obj.stem + "_classes.names"),
-        model_path_obj.parent / "classes.txt",
-    ]
-    
-    for candidate in candidates:
-        if candidate.exists():
-            try:
-                with open(candidate, "r", encoding="utf-8") as f:
-                    names = []
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith("#"):
-                            names.append(line)
-                    if names:
-                        return names
-            except Exception as e:
-                if ConversionConfig().verbose:
-                    print(f"[警告] 無法讀取類別文件 {candidate}: {e}")
-    
-    return []
+    metadata = load_model_metadata(model_path, verbose)
+    return metadata.get('class_names', [])
 
 
 def build_engine_from_onnx(
@@ -568,14 +670,20 @@ def save_engine(engine: trt.ICudaEngine, engine_path: str) -> bool:
         return False
 
 
-def save_classes_file(model_path: str, class_names: List[str], output_path: Optional[str] = None) -> bool:
+def save_classes_file(
+    engine_path: str, 
+    class_names: List[str], 
+    metadata: Optional[dict] = None,
+    output_path: Optional[str] = None
+) -> bool:
     """
-    保存類別信息到文件
+    保存類別信息到文件（保存到 engine 文件同目錄）
     
     Args:
-        model_path: 模型文件路徑（用於確定輸出路徑）
+        engine_path: Engine 文件路徑（用於確定輸出路徑）
         class_names: 類別名稱列表
-        output_path: 可選的輸出路徑，如果為 None 則自動生成
+        metadata: 可選的額外元數據字典
+        output_path: 可選的輸出路徑，如果為 None 則自動生成（與 engine 文件同目錄）
         
     Returns:
         是否保存成功
@@ -584,15 +692,31 @@ def save_classes_file(model_path: str, class_names: List[str], output_path: Opti
         return False
     
     if output_path is None:
-        model_path_obj = Path(model_path)
-        output_path = str(model_path_obj.parent / (model_path_obj.stem + "_classes.txt"))
+        engine_path_obj = Path(engine_path)
+        # 生成類似 "cs2_320_classes.txt" 的文件名
+        output_path = str(engine_path_obj.parent / (engine_path_obj.stem + "_classes.txt"))
     
     try:
         with open(output_path, "w", encoding="utf-8") as f:
             f.write("# Model Classes Information\n")
             f.write("# Generated during TensorRT engine export\n")
-            f.write(f"# Total classes: {len(class_names)}\n\n")
+            f.write(f"# Total classes: {len(class_names)}\n")
             
+            # 寫入額外的 metadata 信息
+            if metadata:
+                if 'yolo_version' in metadata:
+                    f.write(f"# YOLO Version: {metadata['yolo_version']}\n")
+                if 'num_classes' in metadata:
+                    f.write(f"# Number of classes: {metadata['num_classes']}\n")
+                # 寫入其他相關的 metadata（排除已寫入的）
+                excluded_keys = {'class_names', 'classes', 'num_classes', 'yolo_version'}
+                for key, value in metadata.items():
+                    if key not in excluded_keys and not key.startswith('class_'):
+                        f.write(f"# {key}: {value}\n")
+            
+            f.write("\n")
+            
+            # 寫入類別名稱
             for name in class_names:
                 f.write(f"{name}\n")
         
@@ -670,11 +794,42 @@ def convert_onnx_to_engine(
     
     # 保存類別信息（如果啟用）
     if config.save_classes_file:
-        class_names = load_model_class_names(onnx_path)
+        # 讀取完整的模型 metadata
+        metadata = load_model_metadata(onnx_path, config.verbose)
+        class_names = metadata.get('class_names', [])
+        num_classes = metadata.get('num_classes')
+        
+        # 如果沒有類別名稱但有類別數量，至少保存類別數量信息
         if class_names:
-            save_classes_file(onnx_path, class_names)
+            # 保存到 engine 文件同目錄
+            engine_path_obj = Path(engine_path)
+            classes_path = engine_path_obj.parent / (engine_path_obj.stem + "_classes.txt")
+            
+            if save_classes_file(engine_path, class_names, metadata):
+                print(f"[TensorRT] 類別信息已保存到: {classes_path} (共 {len(class_names)} 個類別)")
+                if config.verbose and 'yolo_version' in metadata:
+                    print(f"[TensorRT] YOLO 版本: {metadata['yolo_version']}")
+            else:
+                print(f"[警告] 無法保存類別文件到: {classes_path}")
+        elif num_classes:
+            # 即使沒有類別名稱，也保存類別數量信息
+            engine_path_obj = Path(engine_path)
+            classes_path = engine_path_obj.parent / (engine_path_obj.stem + "_classes.txt")
+            
+            # 生成默認類別名稱
+            default_class_names = [f"class_{i}" for i in range(num_classes)]
+            metadata['class_names'] = default_class_names
+            
+            if save_classes_file(engine_path, default_class_names, metadata):
+                print(f"[TensorRT] 類別數量信息已保存到: {classes_path} (共 {num_classes} 個類別，使用默認名稱)")
+                if config.verbose:
+                    print(f"[警告] 模型沒有類別名稱，使用默認名稱 class_0, class_1, ...")
+            else:
+                print(f"[警告] 無法保存類別文件到: {classes_path}")
+        else:
+            print("[警告] 無法從模型讀取類別信息，跳過保存 classes.txt")
             if config.verbose:
-                print(f"[TensorRT] 類別信息已保存（共 {len(class_names)} 個類別）")
+                print(f"[調試] 嘗試讀取的 metadata 鍵: {list(metadata.keys()) if metadata else '無'}")
     
     return True, engine_path
 
